@@ -50,7 +50,10 @@ st.markdown(
         font-size: 36px;
         font-weight: bold;
         color: #1f4e79;
-        margin-left: 20px;
+        text-align: right;
+        text-transform: uppercase;
+        text-shadow: 1px 1px 2px #aaa;
+        margin-right: 20px;
     }
     /* Style for index cards */
     .card {
@@ -79,6 +82,13 @@ st.markdown(
         font-weight: bold;
         white-space: pre-wrap;
         color: #1f4e79;
+    }
+    /* Style for percentage value in index cards */
+    .percentage-value {
+        font-size: 36px;
+        color: #ff5722;
+        font-weight: bold;
+        margin: 0;
     }
     /* Custom colors for Streamlit elements */
     .stButton > button {
@@ -501,7 +511,7 @@ def main():
                         unsafe_allow_html=True,
                     )
 
-            st.markdown("## Detailed Analyses")
+            # Removed 'Detailed Analyses' subheader as per instruction
 
             pdf_elements = []
 
@@ -509,8 +519,6 @@ def main():
             if selected_requisitioner == 'All':
                 # On-Time Delivery Performance
                 if 'RecDate' in df_filtered.columns and 'RequestDate' in df_filtered.columns:
-                    st.markdown("### On-Time Delivery Performance")
-
                     # Remove time from 'RecDate' and 'RequestDate' columns
                     df_filtered['RecDate'] = pd.to_datetime(df_filtered['RecDate']).dt.date
                     df_filtered['RequestDate'] = pd.to_datetime(df_filtered['RequestDate']).dt.date
@@ -526,13 +534,16 @@ def main():
                         on_time_percentage = 0
 
                     on_time_percentage_formatted = f"{on_time_percentage:.2f}%"
+                    late_percentage = 100 - on_time_percentage
+                    late_percentage_formatted = f"{late_percentage:.2f}%"
 
                     # Display index card with On-Time Delivery Percentage
                     st.markdown(
                         f"""
                         <div class="card" style='background-color: #AED581; width: 100%;'>
                             <h3>On Time Delivery</h3>
-                            <p>{on_time_percentage_formatted}</p>
+                            <p class="percentage-value">{on_time_percentage_formatted}</p>
+                            <p>On-Time: {on_time_percentage_formatted} | Late: {late_percentage_formatted}</p>
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -561,7 +572,7 @@ def main():
 
                     # List of Late Purchase Orders
                     with col2:
-                        st.markdown("#### List of Late Purchase Orders")
+                        st.markdown("#### List of Late Purchase Orders by Request Date")
                         if not late_pos.empty:
                             late_pos['Days Late'] = (pd.to_datetime(late_pos['RecDate']) - pd.to_datetime(late_pos['RequestDate'])).dt.days
                             late_pos_display = late_pos[['OrderDate', 'PONumber', 'Total', 'Days Late', 'Requisitioner']].copy()
@@ -575,21 +586,21 @@ def main():
                             late_pos_display.reset_index(drop=True, inplace=True)
 
                             st.dataframe(late_pos_display)
-                            pdf_elements.append(("List of Late Purchase Orders", late_pos_display, None))
+                            pdf_elements.append(("List of Late Purchase Orders by Request Date", late_pos_display, None))
                         else:
                             st.write("No late purchase orders found.")
-                            pdf_elements.append(("List of Late Purchase Orders", pd.DataFrame(), None))
+                            pdf_elements.append(("List of Late Purchase Orders by Request Date", pd.DataFrame(), None))
                 else:
                     st.error("'RecDate' and/or 'RequestDate' columns are missing.")
 
             # PO Counts per Requisitioner
-            st.markdown("### PO Counts per Requisitioner")
+            st.markdown("### PO Count per Requisitioner by Order Date")
             po_counts = df_filtered.groupby('Requisitioner')['PONumber'].nunique().reset_index()
             po_counts.rename(columns={'PONumber': 'PO Count'}, inplace=True)
             po_amount = df_filtered.groupby('Requisitioner')['Total'].sum().reset_index()
-            po_amount.rename(columns={'Total': 'Total Amount'}, inplace=True)
+            po_amount.rename(columns={'Total': 'Total Open PO Amount'}, inplace=True)
             po_counts_with_amount = pd.merge(po_counts, po_amount, on='Requisitioner', how='left')
-            po_counts_with_amount['Total Amount'] = po_counts_with_amount['Total Amount'].apply(lambda x: f"${x:,.2f}")
+            po_counts_with_amount['Total Open PO Amount'] = po_counts_with_amount['Total Open PO Amount'].apply(lambda x: f"${x:,.2f}")
             po_numbers = df_filtered.groupby('Requisitioner')['PONumber'].apply(lambda x: ', '.join(x.unique())).reset_index()
             po_numbers.rename(columns={'PONumber': 'PO Numbers'}, inplace=True)
             po_counts_final = pd.merge(po_counts_with_amount, po_numbers, on='Requisitioner', how='left')
@@ -597,8 +608,9 @@ def main():
             # Remove index and reset it
             po_counts_final.reset_index(drop=True, inplace=True)
 
-            st.dataframe(po_counts_final)
-            pdf_elements.append(("PO Counts per Requisitioner", po_counts_final, None))
+            # Make table page-wide
+            st.write(po_counts_final)
+            pdf_elements.append(("PO Count per Requisitioner by Order Date", po_counts_final, None))
 
             # Last Orders for the period
             st.markdown("### Last Orders for the period")
@@ -607,6 +619,13 @@ def main():
                 last_orders_display = last_orders.copy()
                 if 'Total' in last_orders_display.columns:
                     last_orders_display['Total'] = last_orders_display['Total'].apply(lambda x: f"${x:,.2f}")
+                    last_orders_display.rename(columns={'Total': 'Open Orders Amt'}, inplace=True)
+
+                # Remove specified columns
+                columns_to_remove = ['Responsibility Key', 'Open Lines Amt']
+                for col in columns_to_remove:
+                    if col in last_orders_display.columns:
+                        last_orders_display.drop(columns=[col], inplace=True)
 
                 # Remove time from date columns
                 date_columns_in_last_orders = last_orders_display.select_dtypes(include=['datetime64[ns]']).columns
@@ -648,17 +667,19 @@ def main():
                 color='Total',
                 color_continuous_scale=px.colors.sequential.Plasma
             )
-            st.plotly_chart(fig_top_vendors, use_container_width=True)
-            top_vendors_display = top_vendors.copy()
-            top_vendors_display['Total'] = top_vendors_display['Total'].apply(lambda x: f"${x:,.2f}")
 
-            # Reset index and drop it
-            top_vendors_display.reset_index(drop=True, inplace=True)
-
-            st.dataframe(top_vendors_display)
-            img_bytes = fig_top_vendors.to_image(format="png", width=800, height=600)
-            img_buf = BytesIO(img_bytes)
-            pdf_elements.append(("Top 5 Vendors by Amount", top_vendors_display, img_buf))
+            # Arrange chart and table side by side
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(fig_top_vendors, use_container_width=True)
+            with col2:
+                top_vendors_display = top_vendors.copy()
+                top_vendors_display['Total'] = top_vendors_display['Total'].apply(lambda x: f"${x:,.2f}")
+                top_vendors_display.reset_index(drop=True, inplace=True)
+                st.dataframe(top_vendors_display)
+                img_bytes = fig_top_vendors.to_image(format="png", width=800, height=600)
+                img_buf = BytesIO(img_bytes)
+                pdf_elements.append(("Top 5 Vendors by Amount", top_vendors_display, img_buf))
 
             # Top Items by QtyOrdered
             st.markdown("### Top Items by QtyOrdered")
@@ -673,17 +694,19 @@ def main():
                 color='QtyOrdered',
                 color_continuous_scale='Agsunset'
             )
-            st.plotly_chart(fig_top_items, use_container_width=True)
-            top_items_no_outliers_display = top_items_no_outliers.copy()
-            top_items_no_outliers_display['QtyOrdered'] = top_items_no_outliers_display['QtyOrdered'].apply(lambda x: f"{x:,.0f}")
 
-            # Reset index and drop it
-            top_items_no_outliers_display.reset_index(drop=True, inplace=True)
-
-            st.dataframe(top_items_no_outliers_display)
-            img_bytes = fig_top_items.to_image(format="png", width=1000, height=600)
-            img_buf = BytesIO(img_bytes)
-            pdf_elements.append(("Top Items by QtyOrdered", top_items_no_outliers_display, img_buf))
+            # Arrange chart and table side by side
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(fig_top_items, use_container_width=True)
+            with col2:
+                top_items_no_outliers_display = top_items_no_outliers.copy()
+                top_items_no_outliers_display['QtyOrdered'] = top_items_no_outliers_display['QtyOrdered'].apply(lambda x: f"{x:,.0f}")
+                top_items_no_outliers_display.reset_index(drop=True, inplace=True)
+                st.dataframe(top_items_no_outliers_display)
+                img_bytes = fig_top_items.to_image(format="png", width=1000, height=600)
+                img_buf = BytesIO(img_bytes)
+                pdf_elements.append(("Top Items by QtyOrdered", top_items_no_outliers_display, img_buf))
 
             # Processing time
             processing_end_time = time.time()
