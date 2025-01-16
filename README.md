@@ -50,29 +50,3 @@ Ensure that your file contains these columns before uploading it to the applicat
    streamlit run app.py
    ```
 4. Open the URL provided by Streamlit to access the application in your browser.
-
----
-
-## Customization
-### Adding a Logo
-- Replace the `TTU_LOGO.jpg` file with your organization's logo.
-
-### Styling
-- Update the CSS in `app.py` to customize the app's appearance.
-
----
-
-## Contributing
-1. Fork the repository and create a new branch for your feature or bugfix.
-2. Submit a pull request with a clear description of your changes.
-
----
-
-## Notes
-- Ensure no sensitive or internal information is included when uploading files.
-- This repository does not include any actual purchase order data.
-
----
-
-## License
-[Specify your license here, e.g., MIT License]
